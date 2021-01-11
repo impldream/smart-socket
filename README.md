@@ -1,4 +1,5 @@
 ## smart-socket [![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu) 
+![](gvp.png)
 smart-socket是一款国产开源的Java AIO框架，支持 TCP、UDP、SSL/TLS，追求代码量、性能、稳定性、接口设计各方面都达到极致。
 如果smart-socket对您有一丝帮助，请Star一下我们的项目并持续关注；
 如果您对smart-socket并不满意，那请多一些耐心，smart-socket一直在努力变得更好。
@@ -8,7 +9,7 @@ smart-socket是一款国产开源的Java AIO框架，支持 TCP、UDP、SSL/TLS�
 - 并发能力更高
 - 硬件能耗更低
 ---
-**官方QQ群：** 172299083🈵 、**830015805**（入群条件：***Star本项目***，非技术人员请勿扰，感谢）
+**官方QQ群：** 172299083🈵 、**830015805**（非技术人员请勿扰，感谢）
 
 ## 本群严禁广告推销，请某云的销售朋友勿扰，给技术人员留一片净土。你们发的广告我会在第一时间清理并将你请出去，所以真的没必要。
 ## 因深受某云广告骚扰，调整下入群规则：
