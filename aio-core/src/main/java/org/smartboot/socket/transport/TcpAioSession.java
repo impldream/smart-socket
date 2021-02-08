@@ -58,11 +58,6 @@ final class TcpAioSession<T> extends AioSession {
      */
     private final AsynchronousSocketChannel channel;
     /**
-     * 读缓冲。
-     * <p>大小取决于AioQuickClient/AioQuickServer设置的setReadBufferSize</p>
-     */
-    private final VirtualBuffer readBuffer;
-    /**
      * 输出流
      */
     private final WriteBuffer byteBuf;
@@ -83,6 +78,15 @@ final class TcpAioSession<T> extends AioSession {
      */
     private final IoServerConfig<T> ioServerConfig;
     /**
+     * 是否读通道以至末尾
+     */
+    boolean eof;
+    /**
+     * 读缓冲。
+     * <p>大小取决于AioQuickClient/AioQuickServer设置的setReadBufferSize</p>
+     */
+    private VirtualBuffer readBuffer;
+    /**
      * 写缓冲
      */
     private VirtualBuffer writeBuffer;
@@ -90,6 +94,8 @@ final class TcpAioSession<T> extends AioSession {
      * 同步输入流
      */
     private InputStream inputStream;
+
+    private volatile int modCount = 0;
 
     /**
      * @param channel                Socket通道
@@ -103,8 +109,6 @@ final class TcpAioSession<T> extends AioSession {
         this.readCompletionHandler = readCompletionHandler;
         this.writeCompletionHandler = writeCompletionHandler;
         this.ioServerConfig = config;
-
-        this.readBuffer = bufferPage.allocate(config.getReadBufferSize());
 
         Consumer<WriteBuffer> flushConsumer = var -> {
             if (!semaphore.tryAcquire()) {
@@ -126,8 +130,10 @@ final class TcpAioSession<T> extends AioSession {
     /**
      * 初始化AioSession
      */
-    void initSession() {
-        continueRead();
+    void initSession(VirtualBuffer readBuffer) {
+        this.readBuffer = readBuffer;
+        this.readBuffer.buffer().flip();
+        signalRead();
     }
 
     /**
@@ -163,6 +169,11 @@ final class TcpAioSession<T> extends AioSession {
         return byteBuf;
     }
 
+    @Override
+    public void awaitRead() {
+        modCount++;
+    }
+
     /**
      * 是否立即关闭会话
      *
@@ -171,7 +182,7 @@ final class TcpAioSession<T> extends AioSession {
     public synchronized void close(boolean immediate) {
         //status == SESSION_STATUS_CLOSED说明close方法被重复调用
         if (status == SESSION_STATUS_CLOSED) {
-            System.out.println("ignore, session:" + getSessionID() + " is closed:");
+//            System.out.println("ignore, session:" + getSessionID() + " is closed:");
             return;
         }
         status = immediate ? SESSION_STATUS_CLOSED : SESSION_STATUS_CLOSING;
@@ -184,7 +195,7 @@ final class TcpAioSession<T> extends AioSession {
             }
             IOUtil.close(channel);
             ioServerConfig.getProcessor().stateEvent(this, StateMachineEnum.SESSION_CLOSED, null);
-        } else if ((writeBuffer == null || !writeBuffer.buffer().hasRemaining()) && !byteBuf.hasData()) {
+        } else if ((writeBuffer == null || !writeBuffer.buffer().hasRemaining()) && byteBuf.isEmpty()) {
             close(true);
         } else {
             ioServerConfig.getProcessor().stateEvent(this, StateMachineEnum.SESSION_CLOSING, null);
@@ -211,17 +222,20 @@ final class TcpAioSession<T> extends AioSession {
     }
 
 
+    void flipRead(boolean eof) {
+        this.eof = eof;
+        this.readBuffer.buffer().flip();
+    }
+
     /**
      * 触发通道的读回调操作
-     *
-     * @param eof 输入流是否已关闭
      */
-    void readCompleted(boolean eof) {
+    public void signalRead() {
+        int modCount = this.modCount;
         if (status == SESSION_STATUS_CLOSED) {
             return;
         }
         final ByteBuffer readBuffer = this.readBuffer.buffer();
-        readBuffer.flip();
         final MessageProcessor<T> messageProcessor = ioServerConfig.getProcessor();
         while (readBuffer.hasRemaining() && status == SESSION_STATUS_ENABLED) {
             T dataEntry;
@@ -238,6 +252,9 @@ final class TcpAioSession<T> extends AioSession {
             //处理消息
             try {
                 messageProcessor.process(this, dataEntry);
+                if (modCount != this.modCount) {
+                    return;
+                }
             } catch (Exception e) {
                 messageProcessor.stateEvent(this, StateMachineEnum.PROCESS_EXCEPTION, e);
             }
@@ -262,19 +279,14 @@ final class TcpAioSession<T> extends AioSession {
             throw exception;
         }
 
-        continueRead();
-    }
-
-    /**
-     * 触发读操作
-     */
-    private void continueRead() {
+        //read from channel
         NetMonitor monitor = getServerConfig().getMonitor();
         if (monitor != null) {
             monitor.beforeRead(this);
         }
-        channel.read(readBuffer.buffer(), 0L, TimeUnit.MILLISECONDS, this, readCompletionHandler);
+        channel.read(readBuffer, 0L, TimeUnit.MILLISECONDS, this, readCompletionHandler);
     }
+
 
     /**
      * 同步读取数据

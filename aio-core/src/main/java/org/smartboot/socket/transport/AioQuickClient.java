@@ -12,6 +12,7 @@ package org.smartboot.socket.transport;
 
 import org.smartboot.socket.MessageProcessor;
 import org.smartboot.socket.Protocol;
+import org.smartboot.socket.VirtualBufferFactory;
 import org.smartboot.socket.buffer.BufferFactory;
 import org.smartboot.socket.buffer.BufferPagePool;
 
@@ -85,6 +86,8 @@ public final class AioQuickClient<T> {
      */
     private int connectTimeout;
 
+    private VirtualBufferFactory readBufferFactory = bufferPage -> bufferPage.allocate(config.getReadBufferSize());
+
     /**
      * 当前构造方法设置了启动Aio客户端的必要参数，基本实现开箱即用。
      *
@@ -148,7 +151,7 @@ public final class AioQuickClient<T> {
             }
             //连接成功则构造AIOSession对象
             session = new TcpAioSession<>(connectedChannel, config, new ReadCompletionHandler<>(), new WriteCompletionHandler<>(), bufferPool.allocateBufferPage());
-            session.initSession();
+            session.initSession(readBufferFactory.newBuffer(bufferPool.allocateBufferPage()));
             return session;
         } catch (Exception e) {
             if (socketChannel != null) {
@@ -309,4 +312,8 @@ public final class AioQuickClient<T> {
         return this;
     }
 
+    public final AioQuickClient<T> setReadBufferFactory(VirtualBufferFactory readBufferFactory) {
+        this.readBufferFactory = readBufferFactory;
+        return this;
+    }
 }

@@ -12,6 +12,7 @@ package org.smartboot.socket.transport;
 import org.smartboot.socket.MessageProcessor;
 import org.smartboot.socket.Protocol;
 import org.smartboot.socket.StateMachineEnum;
+import org.smartboot.socket.VirtualBufferFactory;
 import org.smartboot.socket.buffer.BufferFactory;
 import org.smartboot.socket.buffer.BufferPagePool;
 
@@ -83,6 +84,8 @@ public final class AioQuickServer<T> {
      * asynchronousChannelGroup
      */
     private AsynchronousChannelGroup asynchronousChannelGroup;
+
+    private VirtualBufferFactory readBufferFactory = bufferPage -> bufferPage.allocate(config.getReadBufferSize());
 
     /**
      * 设置服务端启动必要参数配置
@@ -240,7 +243,7 @@ public final class AioQuickServer<T> {
             if (acceptChannel != null) {
                 acceptChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 session = aioSessionFunction.apply(acceptChannel);
-                session.initSession();
+                session.initSession(readBufferFactory.newBuffer(bufferPool.allocateBufferPage()));
             } else {
                 config.getProcessor().stateEvent(null, StateMachineEnum.REJECT_ACCEPT, null);
                 IOUtil.close(channel);
@@ -392,6 +395,11 @@ public final class AioQuickServer<T> {
     public final AioQuickServer<T> setBufferFactory(BufferFactory bufferFactory) {
         this.config.setBufferFactory(bufferFactory);
         this.bufferPool = null;
+        return this;
+    }
+
+    public final AioQuickServer<T> setReadBufferFactory(VirtualBufferFactory readBufferFactory) {
+        this.readBufferFactory = readBufferFactory;
         return this;
     }
 }
